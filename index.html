@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#0f172a" />
+<title>QuickCAD Pro</title>
+<style>
+  :root{
+    --bg:#eef2f7; --panel:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#cbd5e1; --accent:#2563eb;
+    --ok:#16a34a; --warn:#ea580c;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  header{height:52px;background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-weight:800}
+  header small{font-weight:500;opacity:.8}
+  .app{height:calc(100% - 52px);display:flex;flex-direction:column;gap:8px;padding:8px}
+  .bar,.settings,.blocks,.exactbar{display:flex;gap:6px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px}
+  button,select,input{font:inherit}
+  button{min-height:42px;border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 10px;font-weight:650;color:var(--ink)}
+  button.active{background:#dbeafe;border-color:#60a5fa;color:#1d4ed8}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.warn{background:#fff7ed;border-color:#fdba74;color:#9a3412}
+  button:active{transform:scale(.98)}
+  .settings label,.exactbar label{display:flex;align-items:center;gap:6px;font-size:13px}
+  .settings input[type="text"], .exactbar input[type="text"], .exactbar input[type="number"], select{min-height:38px;border:1px solid var(--line);border-radius:8px;padding:6px 9px;background:#fff}
+  .settings input[type="color"]{width:38px;height:38px;border:0;background:transparent;padding:0}
+  .boardWrap{position:relative;flex:1;min-height:320px;background:#fff;border:2px solid #64748b;border-radius:12px;overflow:hidden;touch-action:none}
+  canvas{display:block;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none}
+  .status{position:absolute;left:8px;bottom:8px;background:rgba(15,23,42,.9);color:#fff;border-radius:8px;padding:6px 9px;font-size:12px;pointer-events:none;max-width:min(92vw,720px)}
+  .hud{position:absolute;right:8px;top:8px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--ink);pointer-events:none;min-width:140px}
+  .help{font-size:12px;color:var(--muted)}
+  .exactbar{display:none}
+  .exactbar.show{display:flex}
+  .spacer{flex:1}
+  .pill{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700}
+  .modal{position:fixed;inset:0;background:rgba(2,6,23,.45);display:none;align-items:center;justify-content:center;padding:24px;z-index:10}
+  .modal.show{display:flex}
+  .card{width:min(420px,100%);background:white;border-radius:14px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  .card h3{margin:0 0 10px}.card input{width:100%;height:44px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:16px}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+  @media(max-width:800px){
+    header{height:48px}
+    .app{height:calc(100% - 48px)}
+    .settings,.blocks{max-height:106px;overflow:auto}
+    .exactbar{max-height:120px;overflow:auto}
+    button{min-height:44px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>QuickCAD Pro</div>
+  <small>Finger • Apple Pencil • Stylus • Mouse</small>
+</header>
+<div class="app">
+  <div class="bar" id="toolsBar">
+    <button class="active" data-tool="select">↖ Select</button>
+    <button data-tool="pen">✎ Freehand</button>
+    <button data-tool="line">╱ Line</button>
+    <button data-tool="rect">▭ Rectangle</button>
+    <button data-tool="circle">○ Circle</button>
+    <button data-tool="wall">▥ Wall</button>
+    <button data-tool="dim">↔ Dimension</button>
+    <button data-tool="text">T Text</button>
+    <button id="undo">↶ Undo</button>
+    <button id="redo">↷ Redo</button>
+    <button id="del">⌫ Delete</button>
+    <button id="duplicate">Duplicate</button>
+    <button id="rotate">Rotate 90°</button>
+    <button id="clear" class="warn">Clear</button>
+  </div>
+
+  <div class="settings">
+    <label>Color <input id="color" type="color" value="#111111"></label>
+    <label>Width <select id="width"><option>1</option><option>2</option><option selected>3</option><option>5</option><option>8</option><option>12</option></select></label>
+    <label>Wall <select id="wallWidth"><option value="10">100 mm</option><option value="15" selected>150 mm</option><option value="20">200 mm</option><option value="25">250 mm</option></select></label>
+    <label><input id="grid" type="checkbox" checked> Grid</label>
+    <label><input id="snap" type="checkbox"> Snap</label>
+    <label><input id="ortho" type="checkbox"> Ortho</label>
+    <label>Display unit <select id="unit"><option>mm</option><option>cm</option><option>m</option><option>ft</option><option>in</option></select></label>
+    <label>Reference scale <select id="scaleMM"><option value="5">1 px = 5 mm</option><option value="10" selected>1 px = 10 mm</option><option value="20">1 px = 20 mm</option></select></label>
+    <button id="save">Save</button>
+    <button id="load">Load</button>
+    <button id="export">Export PNG</button>
+  </div>
+
+  <div class="exactbar" id="exactBar">
+    <span class="pill">Exact draw</span>
+    <label>Distance <input id="distanceInput" type="text" placeholder="2400mm / 8ft / 8'6\"" style="width:160px"></label>
+    <label>Angle° <input id="angleInput" type="number" step="0.1" value="0" style="width:92px"></label>
+    <button id="applyExact" class="primary">Apply exact line</button>
+    <button id="cancelExact">Cancel exact</button>
+    <span class="help">For Line / Wall / Dimension: tap the start point, then enter distance and angle like AutoCAD.</span>
+  </div>
+
+  <div class="boardWrap" id="boardWrap">
+    <canvas id="canvas" aria-label="QuickCAD drawing area"></canvas>
+    <div class="hud" id="hud">X: 0<br>Y: 0<br>Length: 0 mm</div>
+    <div class="status" id="status">Ready — Select is active. Use Line tool for AutoCAD-style exact distance input.</div>
+  </div>
+
+  <div class="blocks">
+    <button data-block="BED">Bed</button>
+    <button data-block="SOFA">Sofa</button>
+    <button data-block="CHAIR">Chair</button>
+    <button data-block="TABLE">Table</button>
+    <button data-block="TV">TV</button>
+    <button data-block="WARDROBE">Wardrobe</button>
+    <button data-block="DOOR">Door</button>
+    <button data-block="WINDOW">Window</button>
+    <button data-block="WC">WC</button>
+    <button data-block="BASIN">Basin</button>
+    <button data-block="KITCHEN">Kitchen</button>
+    <button data-block="COLUMN">Column</button>
+    <button id="roughLine">Rough→Straight</button>
+    <button id="roughRect">Rough→Rectangle</button>
+    <button id="roughCircle">Rough→Circle</button>
+    <span class="spacer"></span>
+    <span class="help">Tip: while drawing a line, the live length shows near the cursor and in the HUD.</span>
+  </div>
+</div>
+
+<div class="modal" id="textModal">
+  <div class="card">
+    <h3>Add text</h3>
+    <input id="textValue" placeholder="Room name / note / dimension">
+    <div class="actions"><button id="textCancel">Cancel</button><button id="textAdd" class="primary">Add</button></div>
+  </div>
+</div>
+
+<script>
+(()=>{
+  const canvas=document.getElementById('canvas');
+  const ctx=canvas.getContext('2d');
+  const board=document.getElementById('boardWrap');
+  const statusEl=document.getElementById('status');
+  const hudEl=document.getElementById('hud');
+  const exactBar=document.getElementById('exactBar');
+  const $=id=>document.getElementById(id);
+
+  let tool='select';
+  let objects=[];
+  let selected=-1;
+  let working=null;
+  let drawing=false;
+  let startPoint=null;
+  let dragPoint=null;
+  let pointerMoved=false;
+  let history=[];
+  let future=[];
+  let cursor={x:0,y:0,inside:false};
+  let dpr=1;
+  let textPoint=null;
+  let scaleMMPerPX=10;
+
+  const snapShot=()=>{history.push(JSON.stringify(objects)); if(history.length>120)history.shift(); future=[];};
+
+  function resize(){
+    const r=board.getBoundingClientRect();
+    dpr=Math.min(window.devicePixelRatio||1,2);
+    canvas.width=Math.max(1,Math.round(r.width*dpr));
+    canvas.height=Math.max(1,Math.round(r.height*dpr));
+    canvas.style.width=r.width+'px';
+    canvas.style.height=r.height+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    render();
+  }
+  new ResizeObserver(resize).observe(board);
+  window.addEventListener('orientationchange',()=>setTimeout(resize,200));
+
+  function setStatus(msg){ statusEl.textContent=msg; }
+
+  function parseDistance(v){
+    if(!v) return null;
+    v=String(v).trim().toLowerCase();
+    if(!v) return null;
+    const feetInches=v.match(/^(\d+(?:\.\d+)?)\s*'\s*(\d+(?:\.\d+)?)?\s*(?:\"|in)?$/);
+    if(feetInches){
+      const ft=parseFloat(feetInches[1]||0), inch=parseFloat(feetInches[2]||0);
+      return ft*304.8 + inch*25.4;
+    }
+    const n=parseFloat(v);
+    if(!Number.isFinite(n)) return null;
+    if(v.includes('ft')) return n*304.8;
+    if(v.includes('in') || v.includes('"')) return n*25.4;
+    if(v.includes('cm')) return n*10;
+    if(v.includes('m') && !v.includes('mm')) return n*1000;
+    return n; // default mm
+  }
+
+  function formatLength(mm){
+    const unit=$('unit').value;
+    if(unit==='cm') return (mm/10).toFixed(mm%10?1:0)+' cm';
+    if(unit==='m') return (mm/1000).toFixed(2)+' m';
+    if(unit==='ft') return (mm/304.8).toFixed(2)+' ft';
+    if(unit==='in') return (mm/25.4).toFixed(1)+' in';
+    return Math.round(mm)+' mm';
+  }
+
+  function pos(e){
+    const r=canvas.getBoundingClientRect();
+    let x=e.clientX-r.left, y=e.clientY-r.top;
+    if($('snap').checked){ x=Math.round(x/20)*20; y=Math.round(y/20)*20; }
+    if($('ortho').checked && startPoint && ['line','wall','dim'].includes(tool)){
+      if(Math.abs(x-startPoint.x)>=Math.abs(y-startPoint.y)) y=startPoint.y; else x=startPoint.x;
+    }
+    return {x,y};
+  }
+
+  function bounds(o){
+    if(o.type==='pen'){
+      const xs=o.p.map(q=>q.x), ys=o.p.map(q=>q.y);
+      return {x:Math.min(...xs), y:Math.min(...ys), w:Math.max(...xs)-Math.min(...xs), h:Math.max(...ys)-Math.min(...ys)};
+    }
+    if(o.type==='circle') return {x:o.cx-o.r, y:o.cy-o.r, w:o.r*2, h:o.r*2};
+    if(['line','wall','dim'].includes(o.type)) return {x:Math.min(o.x1,o.x2), y:Math.min(o.y1,o.y2), w:Math.abs(o.x2-o.x1), h:Math.abs(o.y2-o.y1)};
+    return {x:o.x, y:o.y, w:o.w||80, h:o.h||50};
+  }
+
+  function hit(p){
+    for(let i=objects.length-1;i>=0;i--){
+      const b=bounds(objects[i]);
+      if(p.x>=b.x-10 && p.x<=b.x+b.w+10 && p.y>=b.y-10 && p.y<=b.y+b.h+10) return i;
+    }
+    return -1;
+  }
+
+  function moveObject(o,dx,dy){
+    if(o.p) o.p.forEach(q=>{q.x+=dx; q.y+=dy;});
+    ['x','cx','x1','x2'].forEach(k=>{ if(o[k]!=null) o[k]+=dx; });
+    ['y','cy','y1','y2'].forEach(k=>{ if(o[k]!=null) o[k]+=dy; });
+  }
+
+  function drawGrid(){
+    if(!$('grid').checked) return;
+    ctx.save();
+    ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1;
+    for(let x=0;x<canvas.clientWidth;x+=20){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.clientHeight); ctx.stroke(); }
+    for(let y=0;y<canvas.clientHeight;y+=20){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.clientWidth,y); ctx.stroke(); }
+    ctx.restore();
+  }
+
+  function drawCrosshair(){
+    if(!cursor.inside) return;
+    ctx.save();
+    ctx.strokeStyle='rgba(37,99,235,.35)';
+    ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(cursor.x,0); ctx.lineTo(cursor.x,canvas.clientHeight); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,cursor.y); ctx.lineTo(canvas.clientWidth,cursor.y); ctx.stroke();
+    ctx.restore();
+  }
+
+  function lineLengthMM(o){
+    return Math.hypot(o.x2-o.x1,o.y2-o.y1) * scaleMMPerPX;
+  }
+
+  function drawMeasurementLabel(x,y,text){
+    ctx.save();
+    ctx.font='12px sans-serif';
+    const w=ctx.measureText(text).width+12;
+    ctx.fillStyle='rgba(15,23,42,.9)';
+    ctx.fillRect(x+10,y-28,w,22);
+    ctx.fillStyle='#fff';
+    ctx.fillText(text,x+16,y-13);
+    ctx.restore();
+  }
+
+  function drawObject(o){
+    ctx.save();
+    ctx.strokeStyle=o.color||'#111';
+    ctx.fillStyle=o.color||'#111';
+    ctx.lineWidth=o.width||3;
+    ctx.lineCap='round';
+    ctx.lineJoin='round';
+
+    if(o.type==='pen'){
+      ctx.beginPath();
+      o.p.forEach((q,i)=> i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));
+      ctx.stroke();
+    } else if(o.type==='line'){
+      ctx.beginPath(); ctx.moveTo(o.x1,o.y1); ctx.lineTo(o.x2,o.y2); ctx.stroke();
+    } else if(o.type==='wall'){
+      ctx.lineWidth=Math.max(6,(o.wallPx||15));
+      ctx.beginPath(); ctx.moveTo(o.x1,o.y1); ctx.lineTo(o.x2,o.y2); ctx.stroke();
+    } else if(o.type==='rect'){
+      ctx.strokeRect(o.x,o.y,o.w,o.h);
+    } else if(o.type==='circle'){
+      ctx.beginPath(); ctx.arc(o.cx,o.cy,o.r,0,Math.PI*2); ctx.stroke();
+    } else if(o.type==='dim'){
+      ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(o.x1,o.y1); ctx.lineTo(o.x2,o.y2); ctx.stroke();
+      const ang=Math.atan2(o.y2-o.y1,o.x2-o.x1), a=7;
+      [[o.x1,o.y1,ang],[o.x2,o.y2,ang+Math.PI]].forEach(([x,y,t])=>{
+        ctx.beginPath();
+        ctx.moveTo(x,y);
+        ctx.lineTo(x+Math.cos(t+.45)*a,y+Math.sin(t+.45)*a);
+        ctx.moveTo(x,y);
+        ctx.lineTo(x+Math.cos(t-.45)*a,y+Math.sin(t-.45)*a);
+        ctx.stroke();
+      });
+      const text=formatLength(lineLengthMM(o));
+      drawMeasurementLabel((o.x1+o.x2)/2,(o.y1+o.y2)/2,text);
+    } else if(o.type==='text'){
+      ctx.font='18px sans-serif';
+      ctx.fillText(o.text,o.x,o.y);
+    } else if(o.type==='block'){
+      ctx.lineWidth=2;
+      ctx.strokeRect(o.x,o.y,o.w,o.h);
+      ctx.font='12px sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText(o.name,o.x+o.w/2,o.y+o.h/2+4);
+      if(o.name==='BED'){
+        ctx.strokeRect(o.x+7,o.y+7,o.w-14,o.h-14);
+        ctx.strokeRect(o.x+12,o.y+11,o.w/2-16,15);
+        ctx.strokeRect(o.x+o.w/2+4,o.y+11,o.w/2-16,15);
+      }
+      if(o.name==='TABLE'){
+        ctx.beginPath(); ctx.arc(o.x+o.w/2,o.y+o.h/2,Math.min(o.w,o.h)*.3,0,Math.PI*2); ctx.stroke();
+      }
+      if(o.name==='DOOR'){
+        ctx.beginPath(); ctx.moveTo(o.x,o.y+o.h); ctx.lineTo(o.x+o.h,o.y+o.h); ctx.stroke();
+        ctx.beginPath(); ctx.arc(o.x,o.y+o.h,o.h,-Math.PI/2,0); ctx.stroke();
+      }
+      if(o.name==='WINDOW'){
+        ctx.beginPath();
+        ctx.moveTo(o.x+5,o.y+o.h/2-4); ctx.lineTo(o.x+o.w-5,o.y+o.h/2-4);
+        ctx.moveTo(o.x+5,o.y+o.h/2+4); ctx.lineTo(o.x+o.w-5,o.y+o.h/2+4);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  function updateHUD(){
+    let txt=`X: ${Math.round(cursor.x)} px<br>Y: ${Math.round(cursor.y)} px`;
+    if(working && ['line','wall','dim'].includes(working.type)){
+      txt += `<br>Length: ${formatLength(lineLengthMM(working))}`;
+      txt += `<br>Angle: ${Math.atan2(working.y2-working.y1,working.x2-working.x1)*180/Math.PI >=0 ? (Math.atan2(working.y2-working.y1,working.x2-working.x1)*180/Math.PI).toFixed(1) : (360 + Math.atan2(working.y2-working.y1,working.x2-working.x1)*180/Math.PI).toFixed(1)}°`;
+    } else if(selected>=0 && ['line','wall','dim'].includes(objects[selected]?.type)) {
+      const o=objects[selected];
+      txt += `<br>Selected: ${formatLength(lineLengthMM(o))}`;
+    }
+    hudEl.innerHTML=txt;
+  }
+
+  function render(){
+    scaleMMPerPX = +$('scaleMM').value;
+    ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.clientWidth,canvas.clientHeight);
+    drawGrid();
+    objects.forEach(drawObject);
+    if(working) drawObject(working);
+    if(selected>=0 && objects[selected]){
+      const b=bounds(objects[selected]);
+      ctx.save(); ctx.strokeStyle='#2563eb'; ctx.lineWidth=2; ctx.setLineDash([6,4]);
+      ctx.strokeRect(b.x-6,b.y-6,Math.max(12,b.w+12),Math.max(12,b.h+12)); ctx.restore();
+    }
+    drawCrosshair();
+    if(working && ['line','wall','dim'].includes(working.type)){
+      const lenText=formatLength(lineLengthMM(working));
+      drawMeasurementLabel(working.x2,working.y2,lenText);
+    }
+    updateHUD();
+  }
+
+  function showExactBar(show){ exactBar.classList.toggle('show', !!show); }
+
+  function startLinearObject(type, point){
+    startPoint={...point};
+    const base={type,x1:point.x,y1:point.y,x2:point.x,y2:point.y,color:$('color').value,width:+$('width').value};
+    if(type==='wall') base.wallPx=+$('wallWidth').value;
+    working=base;
+    drawing=true;
+    pointerMoved=false;
+    $('distanceInput').value='';
+    $('angleInput').value='0';
+    showExactBar(true);
+    setStatus('Start point fixed. Drag for free draw or type exact distance and angle, then tap Apply exact line.');
+    render();
+  }
+
+  function finalizeWorking(){
+    if(!working) return;
+    snapShot();
+    objects.push(working);
+    selected=objects.length-1;
+    working=null;
+    drawing=false;
+    startPoint=null;
+    dragPoint=null;
+    pointerMoved=false;
+    showExactBar(false);
+    setStatus('Object created.');
+    render();
+  }
+
+  function cancelWorking(){
+    working=null; drawing=false; startPoint=null; dragPoint=null; pointerMoved=false;
+    showExactBar(false); setStatus('Current exact draw cancelled.'); render();
+  }
+
+  function setTool(newTool){
+    tool=newTool;
+    document.querySelectorAll('[data-tool]').forEach(btn=>btn.classList.toggle('active', btn.dataset.tool===newTool));
+    if(!['line','wall','dim'].includes(tool)) showExactBar(false);
+    if(tool==='line'||tool==='wall'||tool==='dim') setStatus('Tap the start point. Then drag or use exact distance + angle input.');
+    else if(tool==='select') setStatus('Select active — tap an object to select it, then drag to move.');
+    else if(tool==='pen') setStatus('Freehand active — draw rough strokes, then convert them if needed.');
+    else setStatus('Tool active: '+newTool);
+  }
+
+  canvas.addEventListener('pointerenter',()=>{cursor.inside=true; render();});
+  canvas.addEventListener('pointerleave',()=>{cursor.inside=false; render();});
+
+  canvas.addEventListener('pointerdown', e=>{
+    e.preventDefault();
+    try{canvas.setPointerCapture(e.pointerId);}catch(_){ }
+    const p=pos(e); cursor={x:p.x,y:p.y,inside:true};
+
+    if(tool==='select'){
+      selected=hit(p);
+      if(selected>=0){ snapShot(); dragPoint=p; drawing=true; setStatus('Selected — drag to move.'); }
+      else setStatus('Nothing selected.');
+      render();
+      return;
+    }
+
+    if(tool==='text'){
+      textPoint=p;
+      $('textValue').value='';
+      $('textModal').classList.add('show');
+      setTimeout(()=>$('textValue').focus(),50);
+      return;
+    }
+
+    if(['line','wall','dim'].includes(tool)){
+      if(!working){
+        startLinearObject(tool,p);
+        return;
+      } else {
+        working.x2=p.x; working.y2=p.y;
+        finalizeWorking();
+        return;
+      }
+    }
+
+    drawing=true;
+    startPoint=p;
+    if(tool==='pen') working={type:'pen',p:[p],color:$('color').value,width:+$('width').value};
+    else if(tool==='rect') working={type:'rect',x:p.x,y:p.y,w:0,h:0,color:$('color').value,width:+$('width').value};
+    else if(tool==='circle') working={type:'circle',cx:p.x,cy:p.y,r:0,color:$('color').value,width:+$('width').value};
+    render();
+  }, {passive:false});
+
+  canvas.addEventListener('pointermove', e=>{
+    const p=pos(e); cursor={x:p.x,y:p.y,inside:true};
+    if(!drawing){
+      if(working && ['line','wall','dim'].includes(working.type)){ working.x2=p.x; working.y2=p.y; }
+      render();
+      return;
+    }
+    e.preventDefault();
+
+    if(tool==='select' && selected>=0 && dragPoint){
+      moveObject(objects[selected], p.x-dragPoint.x, p.y-dragPoint.y);
+      dragPoint=p;
+      render();
+      return;
+    }
+
+    if(!working) return;
+    if(tool==='pen'){
+      working.p.push(p);
+    } else if(['line','wall','dim'].includes(tool)){
+      working.x2=p.x; working.y2=p.y; if(Math.hypot(p.x-working.x1,p.y-working.y1)>3) pointerMoved=true;
+      const ang=Math.atan2(working.y2-working.y1,working.x2-working.x1)*180/Math.PI;
+      $('angleInput').value=(ang<0?ang+360:ang).toFixed(1);
+      $('distanceInput').placeholder=formatLength(lineLengthMM(working));
+    } else if(tool==='rect'){
+      working.w=p.x-startPoint.x; working.h=p.y-startPoint.y;
+    } else if(tool==='circle'){
+      working.r=Math.hypot(p.x-startPoint.x,p.y-startPoint.y);
+    }
+    render();
+  }, {passive:false});
+
+  function endPointer(e){
+    if(e) e.preventDefault();
+    if(tool==='select'){ drawing=false; dragPoint=null; render(); return; }
+    if(['line','wall','dim'].includes(tool)){
+      drawing=false;
+      // keep exact draw alive if line tool has only start point; if user dragged, keep preview until second tap or Apply exact
+      render();
+      return;
+    }
+    if(drawing && working){ finalizeWorking(); }
+    drawing=false;
+  }
+  canvas.addEventListener('pointerup', endPointer, {passive:false});
+  canvas.addEventListener('pointercancel', endPointer, {passive:false});
+
+  document.querySelectorAll('[data-tool]').forEach(btn=>btn.addEventListener('click',()=>setTool(btn.dataset.tool)));
+
+  document.querySelectorAll('[data-block]').forEach(btn=>btn.addEventListener('click',()=>{
+    snapShot();
+    const name=btn.dataset.block;
+    const dims={BED:[130,85],SOFA:[125,55],CHAIR:[55,55],TABLE:[80,80],TV:[95,32],WARDROBE:[125,45],DOOR:[85,85],WINDOW:[110,24],WC:[55,75],BASIN:[65,45],KITCHEN:[135,55],COLUMN:[45,45]}[name]||[90,60];
+    objects.push({type:'block',name,x:60+(objects.length%6)*12,y:60+(objects.length%8)*10,w:dims[0],h:dims[1],color:$('color').value,width:2});
+    selected=objects.length-1;
+    setTool('select');
+    setStatus(name+' inserted — drag to position.');
+    render();
+  }));
+
+  $('undo').onclick=()=>{ if(history.length){ future.push(JSON.stringify(objects)); objects=JSON.parse(history.pop()); selected=-1; cancelWorking(); render(); } };
+  $('redo').onclick=()=>{ if(future.length){ history.push(JSON.stringify(objects)); objects=JSON.parse(future.pop()); selected=-1; render(); } };
+  $('del').onclick=()=>{ if(selected>=0){ snapShot(); objects.splice(selected,1); selected=-1; render(); setStatus('Object deleted.'); } };
+  $('duplicate').onclick=()=>{ if(selected>=0){ snapShot(); const o=JSON.parse(JSON.stringify(objects[selected])); moveObject(o,25,25); objects.push(o); selected=objects.length-1; render(); setStatus('Object duplicated.'); } };
+  $('rotate').onclick=()=>{
+    if(selected<0) return;
+    snapShot();
+    const o=objects[selected], b=bounds(o);
+    if(o.x!=null && o.w!=null){ const cx=b.x+b.w/2, cy=b.y+b.h/2, tmp=o.w; o.w=o.h; o.h=tmp; o.x=cx-o.w/2; o.y=cy-o.h/2; }
+    render(); setStatus('Rotated 90° (basic rotation for blocks/rectangles).');
+  };
+  $('clear').onclick=()=>{ if(objects.length && confirm('Clear the complete drawing?')){ snapShot(); objects=[]; selected=-1; cancelWorking(); render(); setStatus('Drawing cleared.'); } };
+
+  function convertSelected(kind){
+    if(selected<0 || objects[selected].type!=='pen'){ setStatus('Select one freehand stroke first.'); return; }
+    snapShot();
+    const o=objects[selected], b=bounds(o), base={color:o.color,width:o.width};
+    if(kind==='line') objects[selected]={type:'line',x1:b.x,y1:b.y,x2:b.x+b.w,y2:b.y+b.h,...base};
+    if(kind==='rect') objects[selected]={type:'rect',x:b.x,y:b.y,w:Math.max(10,b.w),h:Math.max(10,b.h),...base};
+    if(kind==='circle') objects[selected]={type:'circle',cx:b.x+b.w/2,cy:b.y+b.h/2,r:Math.max(10,(b.w+b.h)/4),...base};
+    render(); setStatus('Freehand converted.');
+  }
+  $('roughLine').onclick=()=>convertSelected('line');
+  $('roughRect').onclick=()=>convertSelected('rect');
+  $('roughCircle').onclick=()=>convertSelected('circle');
+
+  $('applyExact').onclick=()=>{
+    if(!working || !startPoint || !['line','wall','dim'].includes(working.type)) return;
+    const mm=parseDistance($('distanceInput').value);
+    if(!mm || mm<=0){ setStatus('Enter a valid distance like 2400mm, 240cm, 2.4m, 8ft or 8\'6".'); return; }
+    const angDeg=parseFloat($('angleInput').value||'0');
+    const ang=(angDeg*Math.PI/180);
+    const px=mm/scaleMMPerPX;
+    working.x2=working.x1+Math.cos(ang)*px;
+    working.y2=working.y1+Math.sin(ang)*px;
+    finalizeWorking();
+    setStatus('Exact line created.');
+  };
+  $('cancelExact').onclick=()=>cancelWorking();
+  $('distanceInput').addEventListener('keydown',e=>{ if(e.key==='Enter') $('applyExact').click(); });
+  $('angleInput').addEventListener('keydown',e=>{ if(e.key==='Enter') $('applyExact').click(); });
+
+  $('save').onclick=()=>{ localStorage.setItem('quickcad-pro-project', JSON.stringify(objects)); setStatus('Project saved on this device.'); };
+  $('load').onclick=()=>{ const s=localStorage.getItem('quickcad-pro-project'); if(s){ snapShot(); objects=JSON.parse(s); selected=-1; render(); setStatus('Saved project loaded.'); } else setStatus('No saved project on this device.'); };
+  $('export').onclick=()=>{ const old=selected; selected=-1; render(); const a=document.createElement('a'); a.download='QuickCAD_Drawing.png'; a.href=canvas.toDataURL('image/png'); a.click(); selected=old; render(); };
+
+  $('textCancel').onclick=()=>{ $('textModal').classList.remove('show'); textPoint=null; };
+  $('textAdd').onclick=()=>{
+    const t=$('textValue').value.trim();
+    if(t && textPoint){ snapShot(); objects.push({type:'text',text:t,x:textPoint.x,y:textPoint.y,color:$('color').value,width:+$('width').value}); selected=objects.length-1; render(); setStatus('Text added.'); }
+    $('textModal').classList.remove('show'); textPoint=null;
+  };
+  $('textValue').addEventListener('keydown',e=>{ if(e.key==='Enter') $('textAdd').click(); });
+
+  $('grid').onchange=render; $('snap').onchange=render; $('ortho').onchange=render; $('unit').onchange=render; $('scaleMM').onchange=render;
+
+  setTool('select');
+  resize();
+})();
+</script>
+</body>
+</html>
