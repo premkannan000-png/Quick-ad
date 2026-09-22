@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>QuickCAD Live</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#eef2f7;color:#0f172a}
+header{height:50px;background:#0f172a;color:#fff;padding:13px 16px;font-weight:800}
+.app{height:calc(100% - 50px);display:flex;flex-direction:column;gap:8px;padding:8px}
+.bar,.settings,.blocks{display:flex;flex-wrap:wrap;gap:6px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:7px}
+button,select,input{font:inherit}
+button{min-height:42px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:7px 10px;font-weight:650}
+button.active{background:#dbeafe;border-color:#2563eb;color:#1d4ed8}
+.settings input[type=text],select{min-height:38px;border:1px solid #cbd5e1;border-radius:7px;padding:6px 8px}
+.board{position:relative;flex:1;min-height:330px;background:#fff;border:2px solid #64748b;border-radius:10px;overflow:hidden;touch-action:none}
+canvas{width:100%;height:100%;display:block;touch-action:none;-webkit-user-select:none;user-select:none}
+.status{position:absolute;left:8px;bottom:8px;background:rgba(15,23,42,.88);color:#fff;padding:6px 9px;border-radius:7px;font-size:12px}
+@media(max-width:700px){.settings{max-height:110px;overflow:auto}.blocks{max-height:95px;overflow:auto}}
+</style>
+</head>
+<body>
+<header>QuickCAD Live — Interior & Civil 2D Sketch</header>
+<div class="app">
+<div class="bar">
+<button class="active" data-tool="pen">✎ Freehand</button>
+<button data-tool="select">↖ Select</button>
+<button data-tool="line">╱ Line</button>
+<button data-tool="rect">▭ Rectangle</button>
+<button data-tool="circle">○ Circle</button>
+<button data-tool="wall">▥ Wall</button>
+<button data-tool="dim">↔ Dimension</button>
+<button data-tool="text">T Text</button>
+<button id="undo">↶ Undo</button><button id="redo">↷ Redo</button>
+<button id="del">⌫ Delete</button><button id="clear">Clear</button>
+</div>
+<div class="settings">
+<label>Color <input id="color" type="color" value="#111111"></label>
+<label>Width <select id="width"><option>1</option><option>2</option><option selected>3</option><option>5</option><option>8</option><option>12</option></select></label>
+<label><input id="grid" type="checkbox" checked> Grid</label>
+<label><input id="snap" type="checkbox"> Snap</label>
+<label>Unit <select id="unit"><option>mm</option><option>cm</option><option>m</option><option>ft</option><option>in</option></select></label>
+<input id="exact" type="text" placeholder="2400mm / 8ft" style="width:160px">
+<button id="apply">Set length</button><button id="save">Save</button><button id="load">Load</button>
+</div>
+<div class="board" id="board"><canvas id="c"></canvas><div class="status" id="status">Freehand active — finger and Apple Pencil supported.</div></div>
+<div class="blocks">
+<button data-block="BED">Bed</button><button data-block="SOFA">Sofa</button><button data-block="CHAIR">Chair</button><button data-block="TABLE">Table</button>
+<button data-block="TV">TV</button><button data-block="WARDROBE">Wardrobe</button><button data-block="DOOR">Door</button><button data-block="WINDOW">Window</button>
+<button data-block="WC">WC</button><button data-block="BASIN">Basin</button><button data-block="KITCHEN">Kitchen</button><button data-block="COLUMN">Column</button>
+<button id="straight">Rough→Line</button><button id="toRect">Rough→Rect</button><button id="toCircle">Rough→Circle</button>
+<button id="dup">Duplicate</button><button id="rot">Rotate 90°</button><button id="export">Export PNG</button>
+</div>
+</div>
+<script>
+(()=>{const c=document.getElementById('c'),ctx=c.getContext('2d'),board=document.getElementById('board'),$=id=>document.getElementById(id);
+let tool='pen',objs=[],sel=-1,work=null,drawing=false,start=null,drag=null,h=[],f=[],dpr=1,mmpp=10;
+function snap(){h.push(JSON.stringify(objs));if(h.length>100)h.shift();f=[]}
+function resize(){let r=board.getBoundingClientRect();dpr=Math.min(devicePixelRatio||1,2);c.width=r.width*dpr;c.height=r.height*dpr;c.style.width=r.width+'px';c.style.height=r.height+'px';ctx.setTransform(dpr,0,0,dpr,0,0);render()}
+new ResizeObserver(resize).observe(board);
+function p(e){let r=c.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;if($('snap').checked){x=Math.round(x/20)*20;y=Math.round(y/20)*20}return{x,y}}
+function b(o){if(o.type==='pen'){let xs=o.p.map(q=>q.x),ys=o.p.map(q=>q.y);return{x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)}}if(o.type==='circle')return{x:o.cx-o.r,y:o.cy-o.r,w:o.r*2,h:o.r*2};if(['line','wall','dim'].includes(o.type))return{x:Math.min(o.x1,o.x2),y:Math.min(o.y1,o.y2),w:Math.abs(o.x2-o.x1),h:Math.abs(o.y2-o.y1)};return{x:o.x,y:o.y,w:o.w||100,h:o.h||50}}
+function grid(){if(!$('grid').checked)return;ctx.save();ctx.strokeStyle='#e5e7eb';ctx.lineWidth=1;for(let x=0;x<c.clientWidth;x+=20){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,c.clientHeight);ctx.stroke()}for(let y=0;y<c.clientHeight;y+=20){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(c.clientWidth,y);ctx.stroke()}ctx.restore()}
+function label(mm){let u=$('unit').value;if(u==='cm')return(mm/10).toFixed(1)+' cm';if(u==='m')return(mm/1000).toFixed(2)+' m';if(u==='ft')return(mm/304.8).toFixed(2)+' ft';if(u==='in')return(mm/25.4).toFixed(1)+' in';return Math.round(mm)+' mm'}
+function draw(o){ctx.save();ctx.strokeStyle=o.color||'#111';ctx.fillStyle=o.color||'#111';ctx.lineWidth=o.width||3;ctx.lineCap='round';ctx.lineJoin='round';
+if(o.type==='pen'){ctx.beginPath();o.p.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));ctx.stroke()}
+else if(o.type==='line'){ctx.beginPath();ctx.moveTo(o.x1,o.y1);ctx.lineTo(o.x2,o.y2);ctx.stroke()}
+else if(o.type==='wall'){ctx.lineWidth=12;ctx.beginPath();ctx.moveTo(o.x1,o.y1);ctx.lineTo(o.x2,o.y2);ctx.stroke()}
+else if(o.type==='rect')ctx.strokeRect(o.x,o.y,o.w,o.h)
+else if(o.type==='circle'){ctx.beginPath();ctx.arc(o.cx,o.cy,o.r,0,Math.PI*2);ctx.stroke()}
+else if(o.type==='dim'){ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(o.x1,o.y1);ctx.lineTo(o.x2,o.y2);ctx.stroke();ctx.font='13px sans-serif';ctx.fillText(label(Math.hypot(o.x2-o.x1,o.y2-o.y1)*mmpp),(o.x1+o.x2)/2+4,(o.y1+o.y2)/2-5)}
+else if(o.type==='text'){ctx.font='18px sans-serif';ctx.fillText(o.text,o.x,o.y)}
+else if(o.type==='block'){ctx.lineWidth=2;ctx.strokeRect(o.x,o.y,o.w,o.h);ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText(o.name,o.x+o.w/2,o.y+o.h/2+4);if(o.name==='BED'){ctx.strokeRect(o.x+7,o.y+7,o.w-14,o.h-14);ctx.strokeRect(o.x+12,o.y+11,o.w/2-16,15);ctx.strokeRect(o.x+o.w/2+4,o.y+11,o.w/2-16,15)}}
+ctx.restore()}
+function render(){ctx.clearRect(0,0,c.clientWidth,c.clientHeight);ctx.fillStyle='#fff';ctx.fillRect(0,0,c.clientWidth,c.clientHeight);grid();objs.forEach(draw);if(work)draw(work);if(sel>=0&&objs[sel]){let z=b(objs[sel]);ctx.save();ctx.strokeStyle='#2563eb';ctx.setLineDash([6,4]);ctx.strokeRect(z.x-6,z.y-6,Math.max(12,z.w+12),Math.max(12,z.h+12));ctx.restore()}}
+function hit(q){for(let i=objs.length-1;i>=0;i--){let z=b(objs[i]);if(q.x>=z.x-10&&q.x<=z.x+z.w+10&&q.y>=z.y-10&&q.y<=z.y+z.h+10)return i}return-1}
+function move(o,dx,dy){if(o.p)o.p.forEach(q=>{q.x+=dx;q.y+=dy});['x','cx','x1','x2'].forEach(k=>{if(o[k]!=null)o[k]+=dx});['y','cy','y1','y2'].forEach(k=>{if(o[k]!=null)o[k]+=dy})}
+c.addEventListener('pointerdown',e=>{e.preventDefault();try{c.setPointerCapture(e.pointerId)}catch(_){}let q=p(e);
+if(tool==='select'){sel=hit(q);if(sel>=0){snap();drag=q;drawing=true;$('status').textContent='Selected — drag to move.'}render();return}
+if(tool==='text'){let t=prompt('Enter text');if(t){snap();objs.push({type:'text',text:t,x:q.x,y:q.y,color:$('color').value});sel=objs.length-1;render()}return}
+drawing=true;start=q;let color=$('color').value,width=+$('width').value;
+if(tool==='pen')work={type:'pen',p:[q],color,width};else if(['line','wall','dim'].includes(tool))work={type:tool,x1:q.x,y1:q.y,x2:q.x,y2:q.y,color,width};else if(tool==='rect')work={type:'rect',x:q.x,y:q.y,w:0,h:0,color,width};else if(tool==='circle')work={type:'circle',cx:q.x,cy:q.y,r:0,color,width}
+},{passive:false});
+c.addEventListener('pointermove',e=>{if(!drawing)return;e.preventDefault();let q=p(e);if(tool==='select'&&sel>=0&&drag){move(objs[sel],q.x-drag.x,q.y-drag.y);drag=q;render();return}if(!work)return;if(work.type==='pen')work.p.push(q);else if(['line','wall','dim'].includes(work.type)){work.x2=q.x;work.y2=q.y}else if(work.type==='rect'){work.w=q.x-start.x;work.h=q.y-start.y}else if(work.type==='circle')work.r=Math.hypot(q.x-start.x,q.y-start.y);render()},{passive:false});
+function end(e){if(e)e.preventDefault();if(tool==='select'){drawing=false;drag=null;return}if(drawing&&work){snap();objs.push(work);sel=objs.length-1;work=null}drawing=false;render()}
+c.addEventListener('pointerup',end,{passive:false});c.addEventListener('pointercancel',end,{passive:false});
+document.querySelectorAll('[data-tool]').forEach(btn=>btn.onclick=()=>{tool=btn.dataset.tool;document.querySelectorAll('[data-tool]').forEach(x=>x.classList.toggle('active',x===btn));$('status').textContent=tool==='pen'?'Freehand active — finger and Apple Pencil supported.':'Tool active: '+btn.textContent});
+document.querySelectorAll('[data-block]').forEach(btn=>btn.onclick=()=>{snap();let name=btn.dataset.block,d={BED:[130,85],SOFA:[120,55],CHAIR:[55,55],TABLE:[80,80],TV:[95,30],WARDROBE:[125,45],DOOR:[85,85],WINDOW:[110,25],WC:[55,70],BASIN:[65,45],KITCHEN:[135,55],COLUMN:[45,45]}[name]||[90,60];objs.push({type:'block',name,x:60,y:60,w:d[0],h:d[1],color:$('color').value});sel=objs.length-1;tool='select';document.querySelectorAll('[data-tool]').forEach(x=>x.classList.toggle('active',x.dataset.tool==='select'));render()});
+$('undo').onclick=()=>{if(h.length){f.push(JSON.stringify(objs));objs=JSON.parse(h.pop());sel=-1;render()}};$('redo').onclick=()=>{if(f.length){h.push(JSON.stringify(objs));objs=JSON.parse(f.pop());sel=-1;render()}};$('del').onclick=()=>{if(sel>=0){snap();objs.splice(sel,1);sel=-1;render()}};$('clear').onclick=()=>{if(confirm('Clear drawing?')){snap();objs=[];sel=-1;render()}};
+function conv(k){if(sel<0||objs[sel].type!=='pen')return;$('status').textContent='Converted selected freehand stroke.';snap();let o=objs[sel],z=b(o),base={color:o.color,width:o.width};if(k==='line')objs[sel]={type:'line',x1:z.x,y1:z.y,x2:z.x+z.w,y2:z.y+z.h,...base};if(k==='rect')objs[sel]={type:'rect',x:z.x,y:z.y,w:Math.max(10,z.w),h:Math.max(10,z.h),...base};if(k==='circle')objs[sel]={type:'circle',cx:z.x+z.w/2,cy:z.y+z.h/2,r:Math.max(10,(z.w+z.h)/4),...base};render()}
+$('straight').onclick=()=>conv('line');$('toRect').onclick=()=>conv('rect');$('toCircle').onclick=()=>conv('circle');$('dup').onclick=()=>{if(sel<0)return;snap();let o=JSON.parse(JSON.stringify(objs[sel]));move(o,25,25);objs.push(o);sel=objs.length-1;render()};$('rot').onclick=()=>{if(sel<0)return;snap();let o=objs[sel],z=b(o);if(o.x!=null&&o.w!=null){let cx=z.x+z.w/2,cy=z.y+z.h/2,t=o.w;o.w=o.h;o.h=t;o.x=cx-o.w/2;o.y=cy-o.h/2}render()};
+function tomm(v){v=v.trim().toLowerCase();let n=parseFloat(v);if(!isFinite(n))return null;if(v.includes('ft')||v.includes("'"))return n*304.8;if(v.includes('in')||v.includes('"'))return n*25.4;if(v.includes('cm'))return n*10;if(v.includes('m')&&!v.includes('mm'))return n*1000;return n}
+$('apply').onclick=()=>{if(sel<0||!['line','wall','dim'].includes(objs[sel].type))return;let mm=tomm($('exact').value);if(!mm)return;snap();let o=objs[sel],a=Math.atan2(o.y2-o.y1,o.x2-o.x1),px=mm/mmpp;o.x2=o.x1+Math.cos(a)*px;o.y2=o.y1+Math.sin(a)*px;render()};
+$('grid').onchange=render;$('unit').onchange=render;$('save').onclick=()=>{localStorage.setItem('quickcad',JSON.stringify(objs));$('status').textContent='Saved on this device.'};$('load').onclick=()=>{let s=localStorage.getItem('quickcad');if(s){snap();objs=JSON.parse(s);sel=-1;render();$('status').textContent='Saved drawing loaded.'}};$('export').onclick=()=>{let old=sel;sel=-1;render();let a=document.createElement('a');a.download='QuickCAD_Drawing.png';a.href=c.toDataURL('image/png');a.click();sel=old;render()};resize()
+})();
+</script>
+</body></html>
